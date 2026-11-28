@@ -19,6 +19,8 @@ const waitingRoom = {
   seat: 0,
   host: true,
 }
+const rematchRoomId = '00000000-0000-4000-8000-000000000099'
+const finishedRoom = { ...waitingRoom, status: 'finished', count: 2, revision: 8, rematch: { seats: [1], roomId: null } }
 
 async function openLobby(t, respond, {
   resumeId, inviteId, delayPort = false, onRoom = () => {}, onClock = () => {}, timerApis = ['setTimeout'], webFetch,
@@ -267,6 +269,76 @@ test('switching to the bot discards a late confirmation of a joined table', asyn
   assert.deepEqual(opened, [])
   await lobby.click('open-online')
   assert.equal(lobby.get('find-room').disabled, false)
+})
+
+test('a lost rematch vote is verified read-only and the ready table still requires consent', async t => {
+  const path = `/rooms/${finishedRoom.id}`
+  const ready = { ...finishedRoom, rematch: { seats: [1, 0], roomId: rematchRoomId } }
+  const replay = { ...waitingRoom, id: rematchRoomId, status: 'playing', count: 2, revision: 0 }
+  const opened = []
+  let votes = 0, reads = 0
+  const lobby = await openLobby(t, request => {
+    if (request.path === path + '/rematch') { votes++; return undefined }
+    if (request.path === path) {
+      if (++reads === 1) return { room: finishedRoom }
+      return reads === 2 ? new Error('BOARD_UNAVAILABLE') : { room: ready }
+    }
+    if (request.path === `/rooms/${rematchRoomId}`) return { room: replay }
+  }, { resumeId: finishedRoom.id, onRoom: room => opened.push(room.id) })
+  const action = lobby.get('request-rematch')
+  await lobby.click('request-rematch')
+  assert.equal(action.disabled, true)
+  assert.match(lobby.get('rematch-status').textContent, /Guardando/)
+  await lobby.tick(12000)
+  assert.equal(action.disabled, true)
+  assert.match(lobby.get('rematch-status').textContent, /Verificando/)
+  await lobby.tick(5000)
+  assert.equal(votes, 1)
+  assert.equal(action.disabled, false)
+  assert.equal(action.textContent, 'Entrar a la revancha')
+  assert.deepEqual(opened, [finishedRoom.id])
+  await lobby.click('request-rematch')
+  assert.deepEqual(opened, [finishedRoom.id, replay.id])
+})
+
+test('an unconfirmed rematch vote can be retried without the next poll clearing its notice', async t => {
+  const confirmed = { ...finishedRoom, rematch: { seats: [1, 0], roomId: rematchRoomId } }
+  let votes = 0
+  const lobby = await openLobby(t, ({ path }) => path.endsWith('/rematch')
+    ? (++votes === 1 ? new Error('BOARD_UNAVAILABLE') : { room: confirmed })
+    : { room: finishedRoom }, { resumeId: finishedRoom.id })
+  await lobby.click('request-rematch')
+  const notice = lobby.get('rematch-status')
+  assert.match(notice.textContent, /No pudimos confirmar/)
+  await lobby.tick(5000)
+  assert.match(notice.textContent, /No pudimos confirmar/)
+  assert.equal(lobby.get('request-rematch').disabled, false)
+  await lobby.click('request-rematch')
+  assert.equal(votes, 2)
+  assert.match(notice.textContent, /lista/)
+})
+
+test('a closed rematch keeps the old result visible and explains why the new table cannot open', async t => {
+  const ready = { ...finishedRoom, rematch: { seats: [1, 0], roomId: rematchRoomId } }
+  const closed = { ...waitingRoom, id: rematchRoomId, status: 'closed' }
+  const lobby = await openLobby(t, ({ path }) => path.endsWith(rematchRoomId)
+    ? { room: closed } : { room: ready }, { resumeId: finishedRoom.id })
+  await lobby.click('request-rematch')
+  assert.equal(lobby.get('rooms').hidden, true)
+  assert.equal(lobby.get('request-rematch').disabled, true)
+  assert.match(lobby.get('rematch-status').textContent, /La revancha ya no está disponible/)
+})
+
+test('an accepted doubles rematch lists the remaining players and an incoming seat can make it ready', async t => {
+  const waiting = { ...finishedRoom, game: 'ludo', capacity: 4, count: 4, rematch: { seats: [0, 2], roomId: null } }
+  let room = waiting
+  const lobby = await openLobby(t, () => ({ room }), { resumeId: room.id })
+  assert.equal(lobby.get('request-rematch').textContent, 'Esperando a los demás')
+  assert.match(lobby.get('rematch-status').textContent, /2 de 4/)
+  room = { ...waiting, rematch: { seats: [0, 2, 1, 3], roomId: rematchRoomId } }
+  await lobby.tick(5000)
+  assert.equal(lobby.get('request-rematch').textContent, 'Entrar a la revancha')
+  assert.equal(lobby.get('request-rematch').disabled, false)
 })
 
 test('a waiting host can invite friends after a transient lookup failure at the same room revision', async t => {

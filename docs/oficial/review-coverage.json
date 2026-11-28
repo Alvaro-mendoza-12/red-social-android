@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-28T05:56:03.649062+00:00",
-  "baseCommit": "105a96cb1fce1c5763dcdd64aab55e0af72b8aa3",
+  "generatedAtUtc": "2026-11-28T06:08:26.161031+00:00",
+  "baseCommit": "e0b0c359aa23d22e4453d676fba17a9c2c47fc48",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Candidate Git index; unrelated working-tree edits and ignored files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -10,7 +10,7 @@
     "code-read": "Full source read at this hash; follow-ups, integration and runtime validation may still be open."
   },
   "counts": {
-    "pending": 3420,
+    "pending": 3421,
     "code-read": 1132,
     "partial": 324
   },
@@ -21,7 +21,7 @@
       "code-read": 658
     },
     "documentation": {
-      "pending": 748,
+      "pending": 749,
       "code-read": 73,
       "partial": 22
     },
@@ -357,9 +357,9 @@
     {
       "file": "NoWing-web/public/board-games/board-online.js",
       "phase": "web",
-      "gitBlobId": "a08bf73e08c79c9c36e254657ebe450e98a2ea81",
+      "gitBlobId": "af40542feae74c9ca5cb74d1ebb7ab1c8b5bed34",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/279-juegos-recuperacion-de-invitaciones.md",
+      "evidence": "docs/oficial/280-juegos-confirmacion-de-revanchas.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -4681,9 +4681,9 @@
     {
       "file": "NoWing-web/tests/board-online.test.mjs",
       "phase": "web",
-      "gitBlobId": "e2b34d8c00a9c14956c05d2acdacab61de71af2b",
+      "gitBlobId": "c0291dae484bb61bc4f15e2898c80b526c9346c9",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/279-juegos-recuperacion-de-invitaciones.md",
+      "evidence": "docs/oficial/280-juegos-confirmacion-de-revanchas.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -23084,6 +23084,12 @@
       "file": "docs/oficial/28-fragmentos-musicales-en-video-2026-09-16.md",
       "phase": "documentation",
       "gitBlobId": "3128dbc6ac9e0120f5b70bd4a1a4aad28bfec289",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/oficial/280-juegos-confirmacion-de-revanchas.md",
+      "phase": "documentation",
+      "gitBlobId": "f732eede3d08022887a37614b96029786364fafc",
       "reviewStatus": "pending"
     },
     {

@@ -129,6 +129,12 @@ const moveMessages = {
 const checkingJoin = 'Verificando tu entrada a la mesa…'
 const unconfirmedJoin = 'No pudimos confirmar tu entrada. Si la sala sigue disponible, inténtalo de nuevo.'
 const roomKey = (visibility, game, capacity, minutes) => `${visibility}:${game}:${capacity}:${minutes}`
+const rematchMessages = {
+  saving: 'Guardando tu respuesta…',
+  checking: 'Verificando si se guardó tu respuesta…',
+  opening: 'Abriendo la revancha…',
+  unavailable: 'La revancha ya no está disponible.',
+}
 
 function actionButton(label, handler) {
   const button = document.createElement('button')
@@ -163,6 +169,8 @@ export function onlineBoard({ selection, onRoom, clearBoard, onRooms = () => {},
   let focusedInvitation = false
   let chatDraft
   let chatStamp
+  let rematchPhase = ''
+  let rematchNotice = ''
   const invited = new Set()
   const pendingCreations = new Map()
   const url = (suffix = '') => '/rooms/' + room.id + suffix
@@ -171,6 +179,7 @@ export function onlineBoard({ selection, onRoom, clearBoard, onRooms = () => {},
   const reactionButtons = element('reaction-buttons')
   const reactionStatus = element('reaction-status')
   const reactionSendStatus = element('reaction-send-status')
+  const rematchControl = element('request-rematch')
   const movePending = () => moveStatus?.phase === 'sending' || moveStatus?.phase === 'verifying'
   const status = message => {
     const inTable = room != null && room.status !== 'waiting'
@@ -215,6 +224,8 @@ export function onlineBoard({ selection, onRoom, clearBoard, onRooms = () => {},
       room = null
       roomRecovery = null
       moveStatus = null
+      rematchPhase = ''
+      rematchNotice = ''
       loading = false
       reconciling = false
       setRoomBusy(false)
@@ -351,15 +362,26 @@ export function onlineBoard({ selection, onRoom, clearBoard, onRooms = () => {},
         chatStamp = stamp
       }
     }
-    const rematch = element('request-rematch')
+  }
+
+  function renderRematch() {
     const message = element('rematch-status')
-    const data = value.rematch
-    rematch.hidden = !data || value.status !== 'finished'
-    message.hidden = rematch.hidden || !data.seats.length
-    if (rematch.hidden) return
-    rematch.disabled = !data.roomId && data.seats.includes(value.seat)
-    rematch.textContent = data.roomId ? 'Entrar a la revancha' : data.seats.length && !rematch.disabled ? 'Aceptar revancha' : 'Solicitar revancha'
-    if (!message.hidden) message.textContent = data.roomId ? 'La nueva mesa está lista.' : `${data.seats.length} de ${value.capacity} aceptaron la revancha.`
+    const data = room.rematch
+    rematchControl.hidden = !data || room.status !== 'finished'
+    if (rematchControl.hidden) {
+      message.hidden = true
+      return
+    }
+    const ready = Boolean(data.roomId)
+    const alreadyVoted = data.seats.includes(room.seat)
+    rematchControl.disabled = Boolean(rematchPhase) || (!ready && alreadyVoted)
+    if (ready) rematchControl.textContent = 'Entrar a la revancha'
+    else if (alreadyVoted) rematchControl.textContent = room.count > 2 ? 'Esperando a los demás' : 'Esperando al rival'
+    else rematchControl.textContent = data.seats.length ? 'Aceptar revancha' : 'Solicitar revancha'
+    const progress = ready ? 'La nueva mesa está lista.' : data.seats.length ? `${data.seats.length} de ${room.count} aceptaron la revancha.` : ''
+    const feedback = rematchMessages[rematchPhase] || rematchNotice || progress
+    if (message.textContent !== feedback) message.textContent = feedback
+    message.hidden = !feedback
   }
 
   function showRivalReaction(value, enteringRoom) {
@@ -393,6 +415,10 @@ export function onlineBoard({ selection, onRoom, clearBoard, onRooms = () => {},
       return
     }
     const enteringRoom = room?.id !== value.id
+    if (enteringRoom) {
+      rematchPhase = ''
+      rematchNotice = ''
+    }
     const changed = enteringRoom || room?.revision !== value.revision
     const clock = value.clock
     const newerClock = !changed && clock?.startedAt != null && clock.serverNow > (room.clock?.serverNow ?? -Infinity)
@@ -410,6 +436,7 @@ export function onlineBoard({ selection, onRoom, clearBoard, onRooms = () => {},
       if (changed) onRoom(value)
       else if (newerClock) onClock(clock)
       updateSocial(value, enteringRoom)
+      renderRematch()
       if (value.status === 'finished') resetReactions()
       else showRivalReaction(value, enteringRoom)
       return
@@ -510,6 +537,11 @@ export function onlineBoard({ selection, onRoom, clearBoard, onRooms = () => {},
             if (moveStatus?.phase === 'verifying') {
               moveStatus = latest.revision === moveStatus.revision ? { ...moveStatus, phase: 'retry' } : null
             }
+            if (rematchPhase === 'checking') {
+              rematchPhase = ''
+              const voted = latest.rematch?.seats.includes(latest.seat)
+              if (!voted && !latest.rematch?.roomId) rematchNotice = 'No pudimos confirmar tu respuesta. Puedes volver a intentarlo.'
+            } else if (latest.rematch?.roomId && !room?.rematch?.roomId) rematchNotice = ''
             displayRoom(latest)
           }
         } else if (!room) {
@@ -524,6 +556,13 @@ export function onlineBoard({ selection, onRoom, clearBoard, onRooms = () => {},
             lobby(unconfirmedJoin, { invitationId: requestedRoomId })
           } else if (((roomRecovery || verifyingMove) && authNeeded) || (monitored && error.message === 'BOARD_ROOM_NOT_FOUND')) lobby(messageFor(error))
           else if (verifyingMove) status(moveMessages.verifying)
+          else if (rematchPhase === 'checking') {
+            if (authNeeded) {
+              rematchPhase = ''
+              rematchNotice = messageFor(error)
+              renderRematch()
+            }
+          }
           else if (roomRecovery?.fromJoin) status(checkingJoin)
           else status(roomRecovery || (monitored && connectionLost(error)) ? 'Reconectando con la mesa…' : messageFor(error))
         }
@@ -583,6 +622,8 @@ export function onlineBoard({ selection, onRoom, clearBoard, onRooms = () => {},
     }
     room = null
     moveStatus = null
+    rematchPhase = ''
+    rematchNotice = ''
     invited.clear()
     setRoomBusy(verifyingJoin)
     resetReactions()
@@ -846,16 +887,38 @@ export function onlineBoard({ selection, onRoom, clearBoard, onRooms = () => {},
       }
     })
   })
-  element('request-rematch').addEventListener('click', () => run(async current => {
-    if (!room?.rematch || room.status !== 'finished') return
-    if (room.rematch.roomId) {
-      const { room: next } = await request('/rooms/' + room.rematch.roomId)
-      if (current()) displayRoom(next)
-    } else {
-      const { room: updated } = await request(url('/rematch'), {})
-      if (current()) displayRoom(updated)
-    }
-  }))
+  async function requestRematch() {
+    if (!room?.rematch || room.status !== 'finished' || rematchControl.disabled) return
+    await run(async current => {
+      const nextId = room.rematch.roomId
+      rematchPhase = nextId ? 'opening' : 'saving'
+      rematchNotice = ''
+      renderRematch()
+      try {
+        const { room: result } = nextId ? await request('/rooms/' + nextId) : await request(url('/rematch'), {})
+        if (!current()) return
+        if (nextId && result.status === 'closed') {
+          rematchPhase = 'unavailable'
+          renderRematch()
+          return
+        }
+        rematchPhase = ''
+        displayRoom(result)
+      } catch (error) {
+        if (!current()) return
+        if (!nextId && connectionLost(error)) rematchPhase = 'checking'
+        else if (nextId && error.message === 'BOARD_ROOM_NOT_FOUND') rematchPhase = 'unavailable'
+        else {
+          rematchPhase = ''
+          rematchNotice = messageFor(error)
+        }
+        renderRematch()
+      }
+    })
+    if (rematchPhase === 'checking') refreshOnReturn()
+  }
+
+  rematchControl.addEventListener('click', () => void requestRematch())
   let readingAvailability = false
   async function readAvailability() {
     if (readingAvailability || mode !== 'offline' || !element('table').hidden) return
