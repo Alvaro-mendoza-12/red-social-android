@@ -21,9 +21,9 @@ const waitingRoom = {
 }
 
 async function openLobby(t, respond, {
-  resumeId, inviteId, delayPort = false, onRoom = () => {}, onClock = () => {}, timerApis = ['setTimeout'],
+  resumeId, inviteId, delayPort = false, onRoom = () => {}, onClock = () => {}, timerApis = ['setTimeout'], webFetch,
 } = {}) {
-  const query = new URLSearchParams({ mode: 'android' })
+  const query = new URLSearchParams(webFetch ? {} : { mode: 'android' })
   if (resumeId) query.set('resume', resumeId)
   if (inviteId) query.set('invite', inviteId)
   const dom = new JSDOM(markup, {
@@ -54,7 +54,8 @@ async function openLobby(t, respond, {
   const wireErrors = []
   const { onlineBoard } = await import('../public/board-games/board-online.js?' + encodeURIComponent(t.name))
   const connectPort = () => window.dispatchEvent(new window.MessageEvent('message', { data: 'novvin-board', ports: [makePort()] }))
-  if (!delayPort) connectPort()
+  if (webFetch) t.mock.method(globalThis, 'fetch', webFetch)
+  else if (!delayPort) connectPort()
   const controller = onlineBoard({
     selection: () => ({ kind: 'chess', capacity: 2 }),
     onRoom,
@@ -722,4 +723,104 @@ test('opening a recovered room from the lobby completes the previous creation', 
   await lobby.click('create-private')
   assert.equal(ids.length, 2)
   assert.notEqual(ids[0], ids[1])
+})
+
+test('Android confirms a reaction while a chess move remains in flight', async t => {
+  const playing = { ...waitingRoom, status: 'playing', revision: 2, count: 2, reactions: [] }
+  let finishMove, finishReaction
+  let reactionsSent = 0
+  const lobby = await openLobby(t, ({ path }) => {
+    if (path.endsWith('/actions')) return new Promise(resolve => { finishMove = resolve })
+    if (path.endsWith('/reactions')) {
+      reactionsSent++
+      return new Promise(resolve => { finishReaction = resolve })
+    }
+    return { room: playing }
+  }, { resumeId: playing.id })
+  const move = lobby.controller.move({ type: 'move', from: 52, to: 36 })
+  const buttons = lobby.get('reaction-buttons').children
+  buttons[0].click()
+  buttons[1].click()
+  assert.equal(reactionsSent, 1)
+  assert.equal(buttons[1].disabled, true)
+  assert.match(lobby.get('reaction-send-status').textContent, /Enviando reacción/)
+  finishReaction({ reactions: [{ seat: 0, emoji: '👏', at: 100 }] })
+  await settle()
+  assert.match(lobby.get('reaction-send-status').textContent, /Reacción enviada 👏/)
+  assert.equal(lobby.get('table-connection').textContent, 'Enviando la jugada…')
+  assert.equal(buttons[1].disabled, false)
+  finishMove({ room: { ...playing, revision: 3 } })
+  await move
+  assert.equal(lobby.get('table-connection').hidden, true)
+})
+
+test('a rival reaction appears once across polls regardless of the Android clock and skips the initial history', async t => {
+  const old = { seat: 1, emoji: '🤝', at: 10 }
+  const recent = { seat: 1, emoji: '🎉', at: 20 }
+  const own = { seat: 0, emoji: '👏', at: 20 }
+  let room = { ...waitingRoom, status: 'playing', count: 2, players: [{ seat: 1, name: 'Lucía' }], reactions: [old] }
+  const lobby = await openLobby(t, () => ({ room }), { resumeId: room.id })
+  const feedback = lobby.get('reaction-status')
+  assert.equal(feedback.textContent, '')
+  room = { ...room, reactions: [old, recent, own] }
+  await lobby.tick(1800)
+  assert.equal(feedback.textContent, 'Lucía · 🎉')
+  for (let index = 0; index < 3; index++) await lobby.tick(1800)
+  assert.equal(feedback.textContent, '')
+  await lobby.tick(1800)
+  assert.equal(feedback.textContent, '')
+})
+
+test('a reaction error can be retried and a delayed confirmation is discarded when the user leaves', async t => {
+  const playing = { ...waitingRoom, status: 'playing', count: 2, reactions: [] }
+  let attempts = 0, finishReaction
+  const lobby = await openLobby(t, ({ path }) => {
+    if (path.endsWith('/reactions')) {
+      if (++attempts === 1) return new Error('BOARD_REACTION_LIMIT')
+      return new Promise(resolve => { finishReaction = resolve })
+    }
+    return path === '/rooms' ? { rooms: [] } : { room: playing }
+  }, { resumeId: playing.id })
+  const button = lobby.get('reaction-buttons').firstElementChild
+  button.click()
+  await settle()
+  assert.match(lobby.get('reaction-send-status').textContent, /Espera un momento/)
+  button.click()
+  assert.equal(attempts, 2)
+  lobby.controller.lobby()
+  finishReaction({ reactions: [] })
+  await settle()
+  assert.equal(lobby.get('reaction-send-status').textContent, '')
+  assert.equal(button.disabled, false)
+})
+
+test('web matchmaking recovers when the response body stalls and keeps the retry visible', async t => {
+  const waiting = { ...waitingRoom, visibility: 'public' }
+  let matching = 0
+  let aborted = false
+  const json = payload => new Response(JSON.stringify(payload))
+  const webFetch = (url, { signal }) => {
+    if (url.endsWith('/web-session/refresh')) return json({ accessToken: 'fixture' })
+    if (url.endsWith('/match')) {
+      if (++matching > 1) return json({ room: waiting })
+      return { status: 200, ok: true, json: () => new Promise((resolve, reject) => {
+        signal?.addEventListener('abort', () => { aborted = true; reject(signal.reason) }, { once: true })
+      }) }
+    }
+    return json(url.endsWith('/friends') ? { friends: [] } : { rooms: [] })
+  }
+  const lobby = await openLobby(t, undefined, { webFetch })
+  await lobby.click('find-room')
+  assert.equal(lobby.get('find-room').disabled, true)
+  assert.equal(lobby.get('create-private').disabled, true)
+  assert.match(lobby.get('online-status').textContent, /Buscando una partida disponible/)
+  await lobby.tick(12000)
+  assert.equal(aborted, true)
+  assert.equal(lobby.get('find-room').disabled, false)
+  await lobby.tick(5000)
+  assert.match(lobby.get('online-status').textContent, /Inténtalo nuevamente/)
+  await lobby.click('find-room')
+  assert.equal(matching, 2)
+  assert.equal(lobby.get('waiting').hidden, false)
+  assert.match(lobby.get('waiting-description').textContent, /Buscando rival/)
 })

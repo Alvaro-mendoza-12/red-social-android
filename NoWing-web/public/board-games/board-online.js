@@ -7,6 +7,7 @@ let nextRequest = 0
 let nativePort
 let webToken
 let refresh
+const requestTimeout = 12000
 
 function takeRequest(id) {
   const pending = requests.get(id)
@@ -39,6 +40,20 @@ if (android) window.addEventListener('message', event => {
   window.dispatchEvent(new Event('novvin-board-ready'))
 })
 
+async function fetchJson(path, options) {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), requestTimeout)
+  try {
+    const response = await fetch(path, { ...options, signal: controller.signal })
+    return { status: response.status, ok: response.ok, payload: response.status === 401 ? null : await response.json() }
+  } catch (error) {
+    if (controller.signal.aborted) throw new Error('BOARD_UNAVAILABLE')
+    throw error
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
 async function request(path, body, retry = true) {
   if (android) {
     if (!nativePort) throw new Error('BOARD_UNAVAILABLE')
@@ -46,37 +61,36 @@ async function request(path, body, retry = true) {
       const id = ++nextRequest
       const timer = setTimeout(() => {
         takeRequest(id)?.reject(new Error('BOARD_UNAVAILABLE'))
-      }, 12000)
+      }, requestTimeout)
       requests.set(id, { resolve, reject, timer })
       try { nativePort.postMessage(JSON.stringify({ id, method: body ? 'POST' : 'GET', path, body })) }
       catch { takeRequest(id)?.reject(new Error('BOARD_UNAVAILABLE')) }
     })
   }
   if (!webToken) {
-    refresh ??= fetch('/v1/auth/web-session/refresh', {
+    refresh ??= fetchJson('/v1/auth/web-session/refresh', {
       method: 'POST', credentials: 'same-origin',
       headers: { 'Content-Type': 'application/json', 'X-Novvin-Web-Session': 'web-v1' },
       body: JSON.stringify({ client: 'web' }),
-    }).then(async response => {
-      if (!response.ok) throw new Error(response.status === 401 ? 'BOARD_SIGN_IN' : 'BOARD_UNAVAILABLE')
-      const payload = await response.json()
+    }).then(({ status, ok, payload }) => {
+      if (!ok) throw new Error(status === 401 ? 'BOARD_SIGN_IN' : 'BOARD_UNAVAILABLE')
       if (!payload.accessToken) throw new Error('BOARD_SIGN_IN')
       webToken = payload.accessToken
     }).finally(() => { refresh = null })
     await refresh
   }
-  const response = await fetch('/v1/data/playmatch/board-games' + path, {
+  const { status, ok, payload } = await fetchJson('/v1/data/playmatch/board-games' + path, {
     method: body ? 'POST' : 'GET',
     headers: { Authorization: 'Bearer ' + webToken, 'Content-Type': 'application/json', 'X-Novvin-Board-Protocol': '2' },
     body: body ? JSON.stringify(body) : undefined,
     cache: 'no-store',
   })
-  if (response.status === 401 && retry) {
+  if (status === 401 && retry) {
     webToken = null
     return request(path, body, false)
   }
-  const payload = await response.json()
-  if (!response.ok) throw new Error(payload.error || 'BOARD_UNAVAILABLE')
+  if (status === 401) throw new Error('BOARD_SIGN_IN')
+  if (!ok) throw new Error(payload.error || 'BOARD_UNAVAILABLE')
   return payload
 }
 
@@ -93,6 +107,7 @@ const messages = {
   BOARD_OUT_OF_TURN: 'Es el turno de otra persona.',
   BOARD_ILLEGAL_ACTION: 'Esta jugada no es válida.',
   BOARD_REACTION_LIMIT: 'Espera un momento antes de enviar otra reacción.',
+  BOARD_REACTION_INVALID: 'Solo puedes reaccionar mientras la partida está en juego.',
   BOARD_PLAYER_NOT_FOUND: 'La invitación no está disponible para esta persona.',
   BOARD_INVITES_LIMIT: 'Alcanzaste el máximo de invitaciones de esta sala.',
   BOARD_ROOM_NOT_PLAYING: 'La partida ya cambió de estado.',
@@ -130,7 +145,10 @@ export function onlineBoard({ selection, onRoom, clearBoard, onRooms = () => {},
   let actionVersion = 0
   let loading = false
   let reconciling = false
-  let lastReaction = 0
+  let seenReactions = new Set()
+  let reactionSending = false
+  let rivalReactionTimer
+  let sentReactionTimer
   let friendsLoadedFor
   let friendsLoadingFor
   let lobbyNotice = ''
@@ -145,6 +163,10 @@ export function onlineBoard({ selection, onRoom, clearBoard, onRooms = () => {},
   const pendingCreations = new Map()
   const url = (suffix = '') => '/rooms/' + room.id + suffix
   const moveControls = [element('board'), document.querySelector('.turn-controls')]
+  const roomButtons = ['find-room', 'create-private', 'refresh-rooms'].map(element)
+  const reactionButtons = element('reaction-buttons')
+  const reactionStatus = element('reaction-status')
+  const reactionSendStatus = element('reaction-send-status')
   const movePending = () => moveStatus?.phase === 'sending' || moveStatus?.phase === 'verifying'
   const status = message => {
     const inTable = room != null && room.status !== 'waiting'
@@ -160,6 +182,25 @@ export function onlineBoard({ selection, onRoom, clearBoard, onRooms = () => {},
     }
   }
 
+  function setRoomBusy(busy) {
+    element('room-controls').setAttribute('aria-busy', String(busy))
+    for (const button of roomButtons) button.disabled = busy
+  }
+
+  function setReactionBusy(busy) {
+    reactionSending = busy
+    for (const button of reactionButtons.children) button.disabled = busy
+  }
+
+  function resetReactions() {
+    clearTimeout(rivalReactionTimer)
+    clearTimeout(sentReactionTimer)
+    seenReactions.clear()
+    reactionStatus.textContent = ''
+    reactionSendStatus.textContent = ''
+    setReactionBusy(false)
+  }
+
   function show(next) {
     if (next !== mode) {
       generation++
@@ -171,7 +212,8 @@ export function onlineBoard({ selection, onRoom, clearBoard, onRooms = () => {},
       moveStatus = null
       loading = false
       reconciling = false
-      lastReaction = 0
+      setRoomBusy(false)
+      resetReactions()
       friendsLoadedFor = undefined
       friendsLoadingFor = undefined
       invited.clear()
@@ -261,8 +303,7 @@ export function onlineBoard({ selection, onRoom, clearBoard, onRooms = () => {},
       chatStamp = undefined
       chatDraft = undefined
       element('table-message').value = ''
-      lastReaction = 0
-      element('reaction-status').textContent = ''
+      resetReactions()
     }
     panel.hidden = !Array.isArray(value.chat)
     element('table-chat-form').hidden = value.status !== 'playing'
@@ -292,6 +333,26 @@ export function onlineBoard({ selection, onRoom, clearBoard, onRooms = () => {},
     if (!message.hidden) message.textContent = data.roomId ? 'La nueva mesa está lista.' : `${data.seats.length} de ${value.capacity} aceptaron la revancha.`
   }
 
+  function showRivalReaction(value, enteringRoom) {
+    if (value.status !== 'playing' || !Array.isArray(value.reactions)) return
+    const current = new Set()
+    let newest
+    for (const reaction of value.reactions) {
+      const key = `${reaction.seat}:${reaction.at}:${reaction.emoji}`
+      current.add(key)
+      if (!enteringRoom && reaction.seat !== value.seat && !seenReactions.has(key)) newest = reaction
+    }
+    seenReactions = current
+    if (!newest) return
+    const author = value.players?.find(player => player.seat === newest.seat)?.name
+    reactionStatus.textContent = `${author || 'Jugador ' + (newest.seat + 1)} · ${newest.emoji}`
+    if (!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+      reactionStatus.animate?.([{ transform: 'translateY(5px)', opacity: .35 }, { transform: 'none', opacity: 1 }], { duration: 260, easing: 'ease-out' })
+    }
+    clearTimeout(rivalReactionTimer)
+    rivalReactionTimer = setTimeout(() => { reactionStatus.textContent = '' }, 5000)
+  }
+
   function displayRoom(value) {
     if (room?.id === value.id && value.revision < room.revision) return
     roomToRestore = null
@@ -319,16 +380,8 @@ export function onlineBoard({ selection, onRoom, clearBoard, onRooms = () => {},
       if (changed) onRoom(value)
       else if (newerClock) onClock(clock)
       updateSocial(value, enteringRoom)
-      const reaction = value.reactions?.at(-1)
-      if (reaction && reaction.at > lastReaction && Date.now() - reaction.at < 30000) {
-        lastReaction = reaction.at
-        const author = value.players?.find(player => player.seat === reaction.seat)?.name
-        const feedback = element('reaction-status')
-        feedback.textContent = (author || 'Jugador ' + (reaction.seat + 1)) + ' · ' + reaction.emoji
-        if (!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
-          feedback.animate?.([{ transform: 'translateY(5px)', opacity: .35 }, { transform: 'none', opacity: 1 }], { duration: 260, easing: 'ease-out' })
-        }
-      }
+      if (value.status === 'finished') resetReactions()
+      else showRivalReaction(value, enteringRoom)
       return
     }
     status('')
@@ -498,7 +551,8 @@ export function onlineBoard({ selection, onRoom, clearBoard, onRooms = () => {},
     room = null
     moveStatus = null
     invited.clear()
-    lastReaction = 0
+    setRoomBusy(false)
+    resetReactions()
     friendsLoadedFor = undefined
     friendsLoadingFor = undefined
     lobbyNotice = notice
@@ -508,7 +562,6 @@ export function onlineBoard({ selection, onRoom, clearBoard, onRooms = () => {},
     focusedInvitation = false
     clearBoard()
     element('online-reactions').hidden = true
-    element('reaction-status').textContent = ''
     element('waiting').hidden = true
     element('friends').replaceChildren()
     element('friends-empty').hidden = true
@@ -527,7 +580,9 @@ export function onlineBoard({ selection, onRoom, clearBoard, onRooms = () => {},
     const { kind, capacity, clockMinutes = 0 } = selection()
     const key = kind + ':' + capacity + ':' + clockMinutes
     const privateRoom = visibility === 'private'
+    lobbyNotice = ''
     status(privateRoom ? 'Abriendo la sala para invitar…' : 'Buscando una partida disponible…')
+    setRoomBusy(true)
     // Private creation uses this ID as the room ID. Keep it until the server
     // confirms the write, so a lost reply cannot create a second room.
     const requestId = (privateRoom && pendingCreations.get(key)) || crypto.randomUUID()
@@ -539,7 +594,10 @@ export function onlineBoard({ selection, onRoom, clearBoard, onRooms = () => {},
       if (privateRoom && isCurrent() && ['BOARD_ROOM_LIMIT', 'BOARD_ROOM_INVALID'].includes(error.message)) {
         pendingCreations.delete(key)
       }
+      if (isCurrent()) lobbyNotice = messageFor(error)
       throw error
+    } finally {
+      if (isCurrent()) setRoomBusy(false)
     }
     if (isCurrent()) displayRoom(result.room)
   }
@@ -711,11 +769,30 @@ export function onlineBoard({ selection, onRoom, clearBoard, onRooms = () => {},
     await request(url('/close'), {})
     if (current()) lobby()
   }))
-  element('reaction-buttons').replaceChildren(...emojis.map(([emoji, label]) => {
-    const control = actionButton(emoji, () => run(async current => {
-      const { reactions } = await request(url('/reactions'), { emoji })
-      if (current()) displayRoom({ ...room, reactions })
-    }))
+  async function sendReaction(emoji) {
+    if (room?.status !== 'playing' || reactionSending) return
+    const ticket = generation
+    const roomId = room.id
+    const isCurrent = () => ticket === generation && room?.id === roomId && room.status === 'playing'
+    setReactionBusy(true)
+    clearTimeout(sentReactionTimer)
+    reactionSendStatus.textContent = 'Enviando reacción…'
+    try {
+      await request(url('/reactions'), { emoji })
+      if (!isCurrent()) return
+      reactionSendStatus.textContent = `Reacción enviada ${emoji}`
+      sentReactionTimer = setTimeout(() => { reactionSendStatus.textContent = '' }, 5000)
+    } catch (error) {
+      if (isCurrent()) reactionSendStatus.textContent = connectionLost(error)
+        ? 'No pudimos confirmar la reacción. Puedes volver a intentarlo.'
+        : messageFor(error)
+    } finally {
+      if (isCurrent()) setReactionBusy(false)
+    }
+  }
+
+  reactionButtons.replaceChildren(...emojis.map(([emoji, label]) => {
+    const control = actionButton(emoji, () => void sendReaction(emoji))
     control.setAttribute('aria-label', label)
     return control
   }))
