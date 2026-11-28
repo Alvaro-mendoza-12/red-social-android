@@ -10,9 +10,9 @@
     "code-read": "Full source read at this hash; follow-ups, integration and runtime validation may still be open."
   },
   "counts": {
-    "pending": 3425,
-    "code-read": 1132,
-    "partial": 324
+    "pending": 3426,
+    "code-read": 1131,
+    "partial": 325
   },
   "countsByPhase": {
     "android": {
@@ -21,7 +21,7 @@
       "code-read": 658
     },
     "documentation": {
-      "pending": 753,
+      "pending": 754,
       "code-read": 73,
       "partial": 22
     },
@@ -36,9 +36,9 @@
       "partial": 11
     },
     "web": {
-      "partial": 87,
+      "partial": 88,
       "pending": 468,
-      "code-read": 135
+      "code-read": 134
     }
   },
   "files": [
@@ -4281,9 +4281,9 @@
     {
       "file": "NoWing-web/src/features/voice/VoiceRoomPage.tsx",
       "phase": "web",
-      "gitBlobId": "34c7ab5579b9a3be240cda4dd925f9cb5e5c066d",
+      "gitBlobId": "6c1f6f1db38767e8e4e65cf3c62ec4f27edca3be",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/212-auditoria-integral-mensajeria-medios-llamadas-voz-perfil-2026-11-19.md",
+      "evidence": "docs/oficial/285-voz-y-llamadas-validacion.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -4317,9 +4317,9 @@
     {
       "file": "NoWing-web/src/features/voice/voice.css",
       "phase": "web",
-      "gitBlobId": "4c6a29a43778672047d7d63f855de1a7faf7cd9b",
-      "reviewStatus": "code-read",
-      "evidence": "docs/oficial/212-auditoria-integral-mensajeria-medios-llamadas-voz-perfil-2026-11-19.md",
+      "gitBlobId": "934b0a49523188edea3e4326f58af753c0d9d371",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/285-voz-y-llamadas-validacion.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -23114,6 +23114,12 @@
       "file": "docs/oficial/284-juegos-dos-sesiones-y-persistencia.md",
       "phase": "documentation",
       "gitBlobId": "fba729a27f4c2505610bd38e3a428168d13564cf",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/oficial/285-voz-y-llamadas-validacion.md",
+      "phase": "documentation",
+      "gitBlobId": "96c83ffbbf8731040dec5a061f4f892d0dbab21a",
       "reviewStatus": "pending"
     },
     {

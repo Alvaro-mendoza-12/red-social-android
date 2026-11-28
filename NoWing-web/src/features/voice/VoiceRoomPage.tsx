@@ -362,6 +362,7 @@ export function VoiceRoomPage({ roomIdOverride, minimized = false, onExit }: { r
 
   const socketRef = useRef<VoiceSocket | null>(null)
   const acceptedSocketRef = useRef('')
+  const mediaSocketIdRef = useRef('')
   const [signalingReady, setSignalingReady] = useState(false)
   const lastPhotoSentRef = useRef(0)
   const webrtcManagerRef = useRef<WebRTCManager | null>(null)
@@ -449,6 +450,7 @@ export function VoiceRoomPage({ roomIdOverride, minimized = false, onExit }: { r
     visualTrackRef.current?.stop(); visualTrackRef.current = null; visualSourceRef.current = 'none'; setLocalVideo(null); setVisualSource('none')
     stopSpeakingDetection()
     stopSignaling()
+    mediaSocketIdRef.current = ''
     if (webrtcManagerRef.current) {
       webrtcManagerRef.current.disconnectAll()
       webrtcManagerRef.current.stopLocalStream()
@@ -867,7 +869,7 @@ export function VoiceRoomPage({ roomIdOverride, minimized = false, onExit }: { r
       socket.disconnect()
       socket.connect()
     }, current)
-    const notice = voiceRecoveryNotice(() => setJoinError('La conexión de voz está tardando en volver. Reintentamos automáticamente; también puedes pulsar Reconectar voz.'), () => current() && !acceptedSocketRef.current)
+    const notice = voiceRecoveryNotice(() => setJoinError('La conexión de voz se interrumpió. Estamos intentando recuperarla.'), () => current() && !acceptedSocketRef.current)
     membershipCleanupRef.current = () => {membership.complete();notice.clear()}
     const requestRoomMembership = () => {
       if (!membership.begin()) return
@@ -932,6 +934,16 @@ export function VoiceRoomPage({ roomIdOverride, minimized = false, onExit }: { r
     })
 
     socket.on('connect', () => {
+      const socketId = socket.id
+      if (!socketId || !current()) return
+      if (mediaSocketIdRef.current && mediaSocketIdRef.current !== socketId) {
+        // Remote peers discard the old socket identity on reconnect. Keep local media for the new offers.
+        manager.disconnectAll()
+        pendingIceRef.current.clear()
+        setRemoteStreams({})
+        setPeerStates({})
+      }
+      mediaSocketIdRef.current = socketId
       acceptedSocketRef.current = ''
       setSignalingReady(false)
       setConnectionLabel('Señalización conectada')
@@ -1658,10 +1670,15 @@ export function VoiceRoomPage({ roomIdOverride, minimized = false, onExit }: { r
         />
       ) : null}
 
-      {cueAudioBlocked&&isJoined?<div role="status" className="voice-room-alert">El navegador requiere una pulsación para activar los avisos. <button className="ghost-btn" onClick={()=>void roomCues.prepare().then(ready=>setCueAudioBlocked(!ready))}>Habilitar sonidos</button></div>:null}
+      {cueAudioBlocked && isJoined ? (
+        <div role="status" className="voice-room-alert">
+          <span>El navegador requiere una pulsación para activar los avisos.</span>
+          <button className="ghost-btn" type="button" onClick={() => void roomCues.prepare().then(ready => setCueAudioBlocked(!ready))}>Habilitar sonidos</button>
+        </div>
+      ) : null}
       {joinError ? (
         <article className="voice-room-alert" role="status">
-          {joinError}
+          <span>{joinError}</span>
           {isJoined && !signalingReady ? <button className="ghost-btn" type="button" onClick={() => {
             const manager = webrtcManagerRef.current
             if (manager) void connectSignaling(manager).catch(() => setJoinError('No se pudo reconectar la sala. Reintenta cuando vuelva la conexión.'))
