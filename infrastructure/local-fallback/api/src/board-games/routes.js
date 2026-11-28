@@ -2,7 +2,9 @@
 
 const { randomInt, randomUUID } = require('node:crypto')
 const engine = () => import('./engine/board-match.js')
-const kinds = new Set(['chess', 'checkers', 'ludo', 'tic_tac_toe', 'connect_four', 'gomoku', 'reversi'])
+const gameNames = { chess: 'ajedrez', checkers: 'damas', ludo: 'Ludo', tic_tac_toe: 'tres en raya',
+  connect_four: 'cuatro en línea', gomoku: 'Gomoku', reversi: 'Reversi' }
+const kinds = new Set(Object.keys(gameNames))
 const positionLimits = { tic_tac_toe: 9, connect_four: 42, gomoku: 225, reversi: 64 }
 const supportsAll = req => req.get('X-Novvin-Board-Protocol') === '2'
 const supported = (req, kind) => supportsAll(req) || kind !== 'gomoku' && kind !== 'reversi'
@@ -12,6 +14,16 @@ const uuid = /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i
 const root = '/v1/data/playmatch/board-games'
 const invalid = (status, error) => Object.assign(new Error(error), { status, code: error })
 const square = value => typeof value === 'string' && /^[a-h][1-8]$/.test(value)
+
+function publishBoardInvite(notification, publish, sendPush) {
+  return Promise.allSettled([
+    Promise.resolve().then(() => publish(`user:${notification.recipient_id}`, { event: 'notification', notification })),
+    Promise.resolve().then(() => sendPush(notification, {
+      ...notification.extra_data,
+      body: notification.content.charAt(0).toUpperCase() + notification.content.slice(1),
+    })),
+  ])
+}
 
 // Blocks and accepted friendships can still use legacy account IDs.
 const accountAliases = `SELECT id, ARRAY[id::text, lower(supabase_user_id::text)] AS aliases
@@ -303,9 +315,9 @@ function registerBoardGameRoutes(app, { pool, authRequired, getIdentity, publish
       (recipient_id,actor_id,actor_name,type,target_id,target_type,content,extra_data)
       SELECT COALESCE(recipient.supabase_user_id,recipient.id)::text, COALESCE(actor.supabase_user_id,actor.id)::text,
         COALESCE(NULLIF(actor.display_name,''),'Una amistad de Novvin'), 'board_invite', $3, 'board_room',
-        'Te invitaron a jugar una partida de mesa.', jsonb_build_object('game',$4::text)
+        $5, jsonb_build_object('game',$4::text)
       FROM fallback_users recipient, fallback_users actor WHERE recipient.id=$1 AND actor.id=$2
-      RETURNING *`, [recipient, actor, row.id, row.kind])
+      RETURNING *`, [recipient, actor, row.id, row.kind, `te invitó a jugar ${gameNames[row.kind]}.`])
     return { invited: true, notification }
   }))
   route('get', '/friends', async (req, actor) => {
@@ -453,4 +465,4 @@ function registerBoardGameRoutes(app, { pool, authRequired, getIdentity, publish
     return { startsAt: period.startsAt, endsAt: period.endsAt, serverNow: period.serverNow, top, podium }
   })
 }
-module.exports = { ensureBoardGameTables, registerBoardGameRoutes }
+module.exports = { ensureBoardGameTables, registerBoardGameRoutes, publishBoardInvite }

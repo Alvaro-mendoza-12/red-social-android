@@ -163,6 +163,10 @@ element('setup').addEventListener('submit', event => {
   startLocal()
 })
 element('restart').addEventListener('click', startLocal)
+element('play-again').addEventListener('click', () => {
+  startLocal()
+  element('game-title').focus()
+})
 function startLocal() {
   state.game = boardMatch(state.kind, Number(element('players').value), [])
   state.selection = null
@@ -580,6 +584,8 @@ function render() {
     game.history.length === previous.moves + 1 && !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
   const board = element('board')
   const event = game.history.at(-1)
+  const resultPanel = element('result-panel')
+  const resultArrived = Boolean(result) && resultPanel.hidden
   const movingToken = event && typeof event === 'object' && 'token' in event ? `[data-token="${event.side}-${event.token}"]` : null
   const from = motion && (movingToken ?? (game.lastMove ? `[data-square="${game.lastMove[0]}"] .piece, [data-square="${game.lastMove[0]}"] .disc` : null))
   const bounds = from ? board.querySelector(from)?.getBoundingClientRect() : null
@@ -593,12 +599,15 @@ function render() {
   element('status').textContent = result ?
     `${result.winner === null ? 'Empate' : 'Gana ' + player(result.winner)} · ${result.reason}` :
     `Turno: ${player(turn())}${botTurn() ? ' · Novvin' : onlineTurn}${state.kind === 'chess' && game.board.isCheck() ? ' · Jaque' : ''}${lastRoll}${moveHint}`
-  element('result-panel').hidden = !result
-  element('result-panel').dataset.celebrate = String(Boolean(result && motion))
+  resultPanel.hidden = !result
+  resultPanel.dataset.celebrate = String(Boolean(result && motion))
+  element('play-again').hidden = !result || Boolean(state.room)
+  element('restart').hidden = Boolean(result || state.room)
   if (result) {
     const mine = state.room?.seat ?? (state.bot ? 0 : -1)
     element('result-title').textContent = result.winner === null ? 'Empate' : mine < 0 ? `Gana ${player(result.winner)}` : mine === result.winner ? 'Victoria' : 'Derrota'
     element('result-detail').textContent = `${result.reason} · ${game.history.length} ${game.history.length === 1 ? 'acción' : 'acciones'}`
+    if (resultArrived) element('result-title').focus()
   }
   const ludo = state.kind === 'ludo'
   element('roll').hidden = !ludo || Boolean(result)

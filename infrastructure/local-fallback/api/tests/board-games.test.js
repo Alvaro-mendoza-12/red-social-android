@@ -5,7 +5,8 @@ const { test } = require('node:test')
 const express = require('express')
 const { PGlite } = require('@electric-sql/pglite')
 const { Pool } = require('pg')
-const { ensureBoardGameTables, registerBoardGameRoutes } = require('../src/board-games/routes')
+const { ensureBoardGameTables, registerBoardGameRoutes, publishBoardInvite } = require('../src/board-games/routes')
+const { buildData } = require('../src/push-notifications')
 
 const id = {
   Ana: '00000000-0000-4000-8000-000000000001',
@@ -40,6 +41,7 @@ async function fixture() {
   const app = express()
   app.use(express.json())
   const notifications = []
+  const pushes = []
   let offset = 0
   registerBoardGameRoutes(app, {
     pool,
@@ -48,7 +50,12 @@ async function fixture() {
       next()
     },
     getIdentity: req => req.get('Authorization'),
-    publishInvite: invite => notifications.push(invite),
+    publishInvite: invite => publishBoardInvite(invite, (channel, event) => {
+      assert.equal(channel, `user:${invite.recipient_id}`)
+      assert.equal(event.event, 'notification')
+      notifications.push(event.notification)
+      throw new Error('Realtime temporarily unavailable')
+    }, (notice, data) => pushes.push(buildData(notice, data))),
     now: () => Date.now() + offset,
     rollDie: () => 6,
   })
@@ -59,6 +66,7 @@ async function fixture() {
     pool,
     native,
     notifications,
+    pushes,
     advanceClock(milliseconds) { offset += milliseconds },
     async request(who, path, status = 200, body, boardProtocol = '') {
       const response = await fetch(base + path, {
@@ -135,6 +143,15 @@ test('authenticated board games persists matches, private invites, turns, reacti
   await request('Ana', privatePath + '/invite', 200, { recipientId: id.Carla })
   assert.equal(env.notifications.filter(notification => notification.target_id === privateRoom.id).length, 1)
   assert.equal(env.notifications[0].recipient_id, oldCarla)
+  assert.equal(env.notifications[0].actor_name, 'Ana')
+  assert.equal(env.notifications[0].content, 'te invitó a jugar Ludo.')
+  assert.deepEqual(env.notifications[0].extra_data, { game: 'ludo' })
+  assert.equal(env.pushes.length, 1)
+  assert.equal(env.pushes[0].recipient_id, oldCarla)
+  assert.equal(env.pushes[0].notification_id, env.notifications[0].id)
+  assert.equal(env.pushes[0].target_id, privateRoom.id)
+  assert.equal(env.pushes[0].type, 'board_invite')
+  assert.equal(env.pushes[0].body, 'Te invitó a jugar Ludo.')
   assert.equal((await request('Carla', '/rooms')).rooms.find(room => room.id === privateRoom.id).invited, true)
   const { room: ludo } = await request('Carla', privatePath + '/join', 200, {})
   const { room: rolled } = await request('Ana', privatePath + '/actions', 200, { type: 'roll', roll: 2, revision: ludo.revision })

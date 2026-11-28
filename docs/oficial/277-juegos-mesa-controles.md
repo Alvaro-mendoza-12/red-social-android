@@ -1,0 +1,11 @@
+# Modos, invitaciones y tablero de los juegos de mesa
+
+28 de noviembre de 2026. Los recursos de mesa se comparten entre la web y la vista integrada de Android.
+
+La portada muestra cuatro accesos. Jugar en línea busca un rival. Jugar con amigos abre una sala privada. Jugar contra Novvin selecciona al bot y muestra la dificultad. Dos jugadores en este teléfono prepara la partida por turnos en el mismo dispositivo. El ajuste conserva los motores existentes. [Modos de partida en Chess.com](https://support.chess.com/en/articles/8609779-how-do-i-start-a-game-on-chess-com) · [Partidas e invitaciones en Lichess](https://lichess.org/page/blind-mode-tutorial).
+
+La búsqueda de personas nuevas se activa al escribir al menos dos caracteres y hacer una pausa de 350 ms. Las respuestas anteriores no sustituyen a la consulta actual. El filtro de amistades sigue actualizándose al escribir. Al pedir una partida pública, la pantalla informa primero que está consultando y después explica por qué espera si queda un puesto libre. La invitación guardada identifica al remitente, el juego y la sala. La API solicita la entrega en tiempo real y mediante Firebase por separado, y reutiliza el identificador persistido para ambas.
+
+En Chromium, antes del ajuste las filas de ajedrez diferían hasta 48 píxeles y algunas casillas cambiaban hasta 30 píxeles de altura durante el jaque mate de prueba. Con las ocho filas fijas, la diferencia máxima fue de 0,016 píxeles de redondeo y ninguna casilla cambió de tamaño. Pasaron cuatro anchos de 320 a 620 píxeles. En cada uno se jugó el jaque mate, se abrió una partida nueva desde el resultado y se comprobó que el bot respondiera. El resultado indica ganador o empate y recibe el foco al aparecer.
+
+Pasaron 44 pruebas de cliente y tres conjuntos de API. La comprobación de invitación usó una base temporal y simuló la caída del canal en tiempo real. El canal de notificaciones push recibió el aviso de Ludo una sola vez aunque se repitiera el envío de la invitación. El ensayo de API comprobó también el emparejamiento de dos usuarios y el envío de reacciones. La validación visual usó recursos locales y el protocolo de Android. Quedan pendientes la entrega real de Firebase, la prueba en dos teléfonos y el despliegue. La APK 195 se firmó antes de estas correcciones.

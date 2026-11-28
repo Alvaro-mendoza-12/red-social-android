@@ -109,6 +109,71 @@ test('an Android notice waits for the native channel and presents the specified 
   assert.deepEqual(opened, [invited.id])
 })
 
+test('typing in the private room ignores stale player responses and preserves confirmed invitations', async t => {
+  let resolveOld
+  const queries = []
+  const invitees = []
+  const lobby = await openLobby(t, ({ path, method, body }) => {
+    if (path === '/rooms' && method === 'GET') return { rooms: [] }
+    if (path === '/rooms') return { room: { ...waitingRoom, chat: [] } }
+    if (path === '/friends') return { friends: [{ id: 'friend', name: 'María' }] }
+    if (path.endsWith('/players')) {
+      queries.push(body.query)
+      if (body.query === 'an') return new Promise(resolve => { resolveOld = resolve })
+      return { friends: [{ id: 'selected', name: 'Andrea' }] }
+    }
+    if (path.endsWith('/invite')) {
+      invitees.push(body.recipientId)
+      return { invited: true }
+    }
+    if (path.endsWith('/close')) return { room: { ...waitingRoom, status: 'closed' } }
+  })
+  await lobby.click('open-friends')
+  const query = lobby.get('player-query')
+  const type = text => { query.value = text; query.dispatchEvent(new window.Event('input')) }
+  type('a')
+  await lobby.tick(350)
+  assert.deepEqual(queries, [])
+  type('an')
+  await lobby.tick(350)
+  type('and')
+  await lobby.tick(349)
+  assert.deepEqual(queries, ['an'])
+  await lobby.tick(1)
+  resolveOld({ friends: [{ id: 'old', name: 'Resultado anterior' }] })
+  await settle()
+  const results = lobby.get('players-found')
+  assert.match(results.textContent, /Andrea/)
+  assert.doesNotMatch(results.textContent, /anterior/)
+  results.querySelector('button').click()
+  await settle()
+  assert.equal(results.querySelector('button').textContent, 'Enviada')
+  assert.deepEqual(invitees, ['selected'])
+
+  const friendFilter = lobby.get('friend-filter')
+  friendFilter.value = 'maria'
+  friendFilter.dispatchEvent(new window.Event('input'))
+  assert.equal(lobby.get('friends').firstElementChild.hidden, false)
+  type('andra')
+  await lobby.click('leave-waiting')
+  await lobby.tick(350)
+  assert.deepEqual(queries, ['an', 'and'])
+})
+
+test('finding a match explains the request and why the first seat has to wait', async t => {
+  let finish
+  const lobby = await openLobby(t, ({ path }) => {
+    if (path === '/rooms') return { rooms: [] }
+    if (path === '/match') return new Promise(resolve => { finish = resolve })
+  })
+  await lobby.click('find-room')
+  assert.match(lobby.get('online-status').textContent, /Buscando una partida/)
+  finish({ room: { ...waitingRoom, visibility: 'public' } })
+  await settle()
+  assert.match(lobby.get('waiting-description').textContent, /Buscando rival/)
+  assert.equal(lobby.get('player-search').hidden, true)
+})
+
 test('an unavailable board invitation leaves the regular lobby usable', async t => {
   const unrelated = { ...waitingRoom, id: '00000000-0000-4000-8000-000000000002' }
   const lobby = await openLobby(t, ({ path }) => {

@@ -124,6 +124,8 @@ export function onlineBoard({ selection, onRoom, clearBoard, onRooms = () => {},
   let mode = 'offline'
   let timer
   let rankingTimer
+  let searchTimer
+  let searchVersion = 0
   let generation = 0
   let actionVersion = 0
   let loading = false
@@ -161,6 +163,7 @@ export function onlineBoard({ selection, onRoom, clearBoard, onRooms = () => {},
   function show(next) {
     if (next !== mode) {
       generation++
+      resetPlayerSearch()
       clearTimeout(timer)
       clearTimeout(rankingTimer)
       room = null
@@ -180,7 +183,7 @@ export function onlineBoard({ selection, onRoom, clearBoard, onRooms = () => {},
     element('online').hidden = mode !== 'online'
     element('ranking').hidden = mode !== 'ranking'
     element('online-reactions').hidden = true
-    for (const id of ['offline', 'online', 'ranking']) element('open-' + id).setAttribute('aria-pressed', String(mode === id))
+    for (const id of ['online', 'ranking']) element('open-' + id).setAttribute('aria-pressed', String(mode === id))
   }
 
   const normalized = value => value.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLocaleLowerCase('es').trim()
@@ -332,7 +335,10 @@ export function onlineBoard({ selection, onRoom, clearBoard, onRooms = () => {},
     element('waiting').hidden = false
     element('waiting-art').dataset.cover = value.game
     element('waiting-title').textContent = boardNames[value.game] + (value.visibility === 'private' ? ' · Sala privada' : ' · Sala pública')
-    element('waiting-description').textContent = value.count + ' de ' + value.capacity + ' jugadores. La mesa se abre al completar la sala.' +
+    const waitingText = value.visibility === 'private'
+      ? 'Invita a alguien y espera a que acepte la partida.'
+      : 'Buscando rival. La partida comienza cuando alguien se una.'
+    element('waiting-description').textContent = `${value.count} de ${value.capacity} jugadores. ${waitingText}` +
       (value.clockMinutes ? ` ${value.clockMinutes} minutos por jugador.` : '')
     if (changed) element('waiting-seats').replaceChildren(...Array.from({ length: value.capacity }, (_, seat) => {
       const slot = document.createElement('li')
@@ -484,6 +490,7 @@ export function onlineBoard({ selection, onRoom, clearBoard, onRooms = () => {},
     if (mode !== 'online') show('online')
     else {
       generation++
+      resetPlayerSearch()
       clearTimeout(timer)
       loading = false
       reconciling = false
@@ -504,9 +511,6 @@ export function onlineBoard({ selection, onRoom, clearBoard, onRooms = () => {},
     element('reaction-status').textContent = ''
     element('waiting').hidden = true
     element('friends').replaceChildren()
-    element('players-found').replaceChildren()
-    element('player-search-status').hidden = true
-    element('player-query').value = ''
     element('friends-empty').hidden = true
     element('retry-friends').hidden = true
     element('friend-filter-label').hidden = true
@@ -523,6 +527,7 @@ export function onlineBoard({ selection, onRoom, clearBoard, onRooms = () => {},
     const { kind, capacity, clockMinutes = 0 } = selection()
     const key = kind + ':' + capacity + ':' + clockMinutes
     const privateRoom = visibility === 'private'
+    status(privateRoom ? 'Abriendo la sala para invitar…' : 'Buscando una partida disponible…')
     // Private creation uses this ID as the room ID. Keep it until the server
     // confirms the write, so a lost reply cannot create a second room.
     const requestId = (privateRoom && pendingCreations.get(key)) || crypto.randomUUID()
@@ -625,10 +630,20 @@ export function onlineBoard({ selection, onRoom, clearBoard, onRooms = () => {},
       event.stopPropagation()
     }
   }, { capture: true })
-  element('open-offline').addEventListener('click', () => show('offline'))
+  function chooseOffline(value) {
+    show('offline')
+    const selector = element('mode')
+    selector.value = value
+    selector.dispatchEvent(new Event('change'))
+    element('setup').scrollIntoView?.({ block: 'nearest' })
+    element('setup').querySelector('[type="submit"]').focus({ preventScroll: true })
+  }
+  element('open-offline').addEventListener('click', () => chooseOffline('local'))
+  element('open-bot').addEventListener('click', () => chooseOffline('bot'))
   element('open-online').addEventListener('click', () => lobby())
   element('open-activity').addEventListener('click', () => lobby())
   element('open-friends').addEventListener('click', () => {
+    if (mode === 'online' && loading) return
     lobby()
     void run(current => start('private', current))
   })
@@ -650,27 +665,47 @@ export function onlineBoard({ selection, onRoom, clearBoard, onRooms = () => {},
   element('create-private').addEventListener('click', () => run(current => start('private', current)))
   element('friend-filter').addEventListener('input', filterFriends)
   element('retry-friends').addEventListener('click', () => void loadFriends())
-  element('player-search').addEventListener('submit', event => {
-    event.preventDefault()
+  function resetPlayerSearch() {
+    clearTimeout(searchTimer)
+    searchVersion++
+    element('players-found').replaceChildren()
+    element('player-search-status').hidden = true
+    element('player-query').value = ''
+  }
+
+  function searchPlayers(delay) {
+    clearTimeout(searchTimer)
+    const version = ++searchVersion
     const query = element('player-query').value.trim()
-    if (query.length < 2 || room?.status !== 'waiting' || !room.host) return
+    const output = element('player-search-status')
+    element('players-found').replaceChildren()
+    output.hidden = true
+    if (query.length < 2 || room?.status !== 'waiting' || room.visibility !== 'private' || !room.host) return
     const id = room.id
     const ticket = generation
-    const output = element('player-search-status')
-    const submit = event.currentTarget.querySelector('button')
-    submit.disabled = true
-    element('players-found').replaceChildren()
     output.hidden = false
     output.textContent = 'Buscando jugadores…'
-    const current = () => ticket === generation && room?.id === id && room.status === 'waiting'
-    void request('/rooms/' + id + '/players', { query }).then(({ friends }) => {
+    const current = () => ticket === generation && version === searchVersion && room?.id === id && room.status === 'waiting'
+    const send = async () => {
       if (!current()) return
-      output.hidden = friends.length > 0
-      output.textContent = 'No encontramos jugadores con ese nombre.'
-      renderFriends(friends, 'players-found')
-    }).catch(() => {
-      if (current()) output.textContent = 'No se pudo buscar. Vuelve a intentarlo.'
-    }).finally(() => { submit.disabled = false })
+      try {
+        const { friends } = await request('/rooms/' + id + '/players', { query })
+        if (!current()) return
+        output.hidden = friends.length > 0
+        output.textContent = 'No encontramos jugadores con ese nombre.'
+        renderFriends(friends, 'players-found')
+      } catch {
+        if (current()) output.textContent = 'No se pudo buscar. Vuelve a intentarlo.'
+      }
+    }
+    if (delay) searchTimer = setTimeout(send, delay)
+    else void send()
+  }
+
+  element('player-query').addEventListener('input', () => searchPlayers(350))
+  element('player-search').addEventListener('submit', event => {
+    event.preventDefault()
+    searchPlayers(0)
   })
   element('leave-waiting').addEventListener('click', () => run(async current => {
     await request(url('/close'), {})

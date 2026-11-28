@@ -144,7 +144,11 @@ button:disabled { opacity: .58; }
 }
 .board button:disabled { opacity: 1; }
 .board button:focus-visible { outline-offset: -3px; z-index: 1; }
-.board.eight { border: clamp(.28rem, 1.2vw, .52rem) solid var(--rim); }
+.board.eight {
+  border: clamp(.28rem, 1.2vw, .52rem) solid var(--rim);
+  grid-template-rows: repeat(8, minmax(0, 1fr));
+  container-type: inline-size;
+}
 .eight.chess { --rim: #53382f; --light: #edcfa5; --dark: #a0684e; --light-ink: #4c291c; --dark-ink: #fff0d2; }
 .eight.checkers { --rim: #30483f; --light: #cdd8bb; --dark: #57786b; --light-ink: #243d34; --dark-ink: #edf4dc; }
 .eight .light { background: var(--light); color: var(--light-ink); }
@@ -166,6 +170,7 @@ button:disabled { opacity: .58; }
 .eight .legal.capture::after { width: auto; inset: 8%; border: 2px solid #fff3bb; background: transparent; }
 .piece {
   font-family: 'Segoe UI Symbol', 'DejaVu Sans', 'Noto Sans Symbols 2', sans-serif; font-size: clamp(1.45rem, 8.4vmin, 3rem); pointer-events: none;
+  font-size: min(10cqw, 3rem);
 }
 .piece.white { color: #fff9e7; text-shadow: 0 1px 2px #2e1f17, 0 -1px 1px #2e1f17; }
 .piece.black { color: #25232a; text-shadow: 0 1px 1px #edcc9c; }

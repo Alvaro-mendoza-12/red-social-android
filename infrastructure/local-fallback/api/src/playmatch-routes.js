@@ -1,5 +1,6 @@
 const crypto = require('crypto')
-const { ensureBoardGameTables, registerBoardGameRoutes } = require('./board-games/routes')
+const { ensureBoardGameTables, registerBoardGameRoutes, publishBoardInvite } = require('./board-games/routes')
+const { sendPushForNotification } = require('./push-notifications')
 const { candidateFitsCriteria, normalizeCandidateCriteria } = require('./playmatch-candidate-constraints')
 const {
   ensureDynamicPlayMatchCatalogTables,
@@ -796,7 +797,8 @@ function registerPlayMatchRoutes(app, {
   registerBoardGameRoutes(app, {
     pool,
     authRequired,
-    publishInvite: notification => publishRealtimeEvent(`user:${notification.recipient_id}`, { event: 'notification', notification }),
+    publishInvite: notification => publishBoardInvite(notification, publishRealtimeEvent,
+      (notice, data) => sendPushForNotification(pool, notice, data)),
     getIdentity: async (req, res) => {
       const ctx = await context(req, res)
       return ctx ? localUserId(ctx.user) : null

@@ -30,13 +30,14 @@
           <div class="play-modes" aria-label="Modalidad de juego">
             <button type="button" class="primary" id="open-online">Jugar en línea</button>
             <button type="button" id="open-friends">Jugar con amigos</button>
-            <button type="button" id="open-offline">En este dispositivo</button>
+            <button type="button" id="open-bot">Jugar contra Novvin</button>
+            <button type="button" id="open-offline">Dos jugadores en este teléfono</button>
           </div>
         </div>
       </section>
     </div>
     <form id="setup">
-      <label>Modo<select id="mode"><option value="local">En este dispositivo</option><option value="bot">Contra Novvin</option></select></label>
+      <label>Modo<select id="mode"><option value="local">Dos jugadores en este teléfono</option><option value="bot">Contra Novvin</option></select></label>
       <label id="players-control" hidden>Jugadores<select id="players"><option>2</option><option>3</option><option>4</option></select></label>
       <label id="level-control" hidden>Dificultad<select id="level"><option value="0">Principiante</option><option value="1">Fácil</option><option value="2" selected>Intermedio</option><option value="3">Avanzado</option><option value="4">Experto</option></select></label>
       <label id="clock-control">Reloj de ajedrez<select id="chess-time"><option value="0">Sin límite</option><option value="3">3 minutos</option><option value="5">5 minutos</option><option value="10">10 minutos</option></select></label>
@@ -59,8 +60,8 @@
         <p id="waiting-description"></p>
         <ol id="waiting-seats" aria-label="Puestos de la mesa"></ol>
         <form id="player-search" hidden>
-          <label for="player-query">Buscar jugadores de Novvin</label>
-          <div><input id="player-query" minlength="2" maxlength="80" type="search" required><button type="submit">Buscar</button></div>
+          <label for="player-query">Buscar nuevos jugadores</label>
+          <div><input id="player-query" minlength="2" maxlength="80" type="search" required autocomplete="off" placeholder="Escribe al menos 2 letras"><button type="submit">Buscar</button></div>
         </form>
         <p id="player-search-status" role="status" hidden></p>
         <div id="players-found"></div>
@@ -117,7 +118,8 @@
         <div id="chess-clock" hidden aria-label="Tiempo de ajedrez"><span id="white-time"></span><span id="black-time"></span></div>
         <div class="board-stage"><div id="board" role="group" aria-label="Tablero"></div></div>
         <section id="result-panel" class="result-panel" hidden aria-labelledby="result-title">
-          <h3 id="result-title"></h3><p id="result-detail"></p>
+          <h3 id="result-title" tabindex="-1"></h3><p id="result-detail"></p>
+          <button class="primary" id="play-again" type="button" hidden>Jugar otra vez</button>
           <button class="primary" id="request-rematch" type="button" hidden>Solicitar revancha</button>
           <p id="rematch-status" role="status" hidden></p>
         </section>
