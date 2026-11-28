@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-28T06:08:26.161031+00:00",
-  "baseCommit": "e0b0c359aa23d22e4453d676fba17a9c2c47fc48",
+  "generatedAtUtc": "2026-11-28T06:27:05.124038+00:00",
+  "baseCommit": "898bc2b3d982c69cdcebb6a48bc364629925a3fb",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Candidate Git index; unrelated working-tree edits and ignored files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -10,7 +10,7 @@
     "code-read": "Full source read at this hash; follow-ups, integration and runtime validation may still be open."
   },
   "counts": {
-    "pending": 3421,
+    "pending": 3422,
     "code-read": 1132,
     "partial": 324
   },
@@ -21,7 +21,7 @@
       "code-read": 658
     },
     "documentation": {
-      "pending": 749,
+      "pending": 750,
       "code-read": 73,
       "partial": 22
     },
@@ -319,9 +319,9 @@
     {
       "file": "NoWing-web/public/board-games/board-center.css",
       "phase": "web",
-      "gitBlobId": "3c21458c61e8794e9a352345f7cf26cea2f7cc15",
+      "gitBlobId": "dac4d0c155575fadac341be3e6354c80cc509ca5",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/277-juegos-mesa-controles.md",
+      "evidence": "docs/oficial/281-juegos-chat-confirmacion-y-borrador.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -341,9 +341,9 @@
     {
       "file": "NoWing-web/public/board-games/board-games.html",
       "phase": "web",
-      "gitBlobId": "db2b33f28297e6e39efb519393bb857945cd08ce",
+      "gitBlobId": "9402032380aa3ef73ebd4e04e966c8354833b044",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/278-juegos-reacciones-y-busqueda.md",
+      "evidence": "docs/oficial/281-juegos-chat-confirmacion-y-borrador.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -357,9 +357,9 @@
     {
       "file": "NoWing-web/public/board-games/board-online.js",
       "phase": "web",
-      "gitBlobId": "af40542feae74c9ca5cb74d1ebb7ab1c8b5bed34",
+      "gitBlobId": "a48f7bff4182fae9a0855bb863de6c76958705f3",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/280-juegos-confirmacion-de-revanchas.md",
+      "evidence": "docs/oficial/281-juegos-chat-confirmacion-y-borrador.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -4681,9 +4681,9 @@
     {
       "file": "NoWing-web/tests/board-online.test.mjs",
       "phase": "web",
-      "gitBlobId": "c0291dae484bb61bc4f15e2898c80b526c9346c9",
+      "gitBlobId": "aaadef7ab5a88ecf248395fed9c2c94084742569",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/280-juegos-confirmacion-de-revanchas.md",
+      "evidence": "docs/oficial/281-juegos-chat-confirmacion-y-borrador.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -23090,6 +23090,12 @@
       "file": "docs/oficial/280-juegos-confirmacion-de-revanchas.md",
       "phase": "documentation",
       "gitBlobId": "f732eede3d08022887a37614b96029786364fafc",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/oficial/281-juegos-chat-confirmacion-y-borrador.md",
+      "phase": "documentation",
+      "gitBlobId": "2215475acdcc8c4c25b0e8287375ae6c5abf24cb",
       "reviewStatus": "pending"
     },
     {

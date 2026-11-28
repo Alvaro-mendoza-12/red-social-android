@@ -329,6 +329,86 @@ test('a closed rematch keeps the old result visible and explains why the new tab
   assert.match(lobby.get('rematch-status').textContent, /La revancha ya no está disponible/)
 })
 
+test('the table chat verifies a lost receipt and keeps text typed while waiting', async t => {
+  const playing = { ...waitingRoom, status: 'playing', count: 2, revision: 3, chat: [] }
+  const sent = []
+  let current = playing
+  const lobby = await openLobby(t, ({ path, body }) => {
+    if (path.endsWith('/chat')) {
+      sent.push(body)
+      return undefined
+    }
+    return { room: current }
+  }, { resumeId: playing.id })
+  const input = lobby.get('table-message')
+  const form = lobby.get('table-chat-form')
+  const send = form.querySelector('button')
+  input.value = 'Buena partida'
+  form.dispatchEvent(new window.Event('submit', { cancelable: true }))
+  assert.equal(send.disabled, true)
+  assert.match(lobby.get('table-chat-status').textContent, /Enviando/)
+  input.value = '¿Otra más?'
+  current = { ...playing, chat: [{ id: sent[0].messageId, seat: playing.seat, text: sent[0].text }] }
+  await lobby.tick(12000)
+  assert.equal(send.disabled, false)
+  assert.equal(sent.length, 1)
+  assert.equal(input.value, '¿Otra más?')
+  assert.match(lobby.get('table-chat-status').textContent, /Mensaje enviado/)
+  assert.equal(lobby.get('table-messages').childElementCount, 1)
+})
+
+test('retrying a table message reuses the ID and preserves the error across polls', async t => {
+  const playing = { ...waitingRoom, status: 'playing', count: 2, revision: 3, chat: [] }
+  const sent = []
+  const lobby = await openLobby(t, ({ path, body }) => {
+    if (path.endsWith('/chat')) {
+      sent.push(body)
+      return sent.length === 1 ? new Error('BOARD_UNAVAILABLE')
+        : { room: { ...playing, chat: [{ id: body.messageId, seat: 0, text: body.text }] } }
+    }
+    return { room: playing }
+  }, { resumeId: playing.id })
+  const input = lobby.get('table-message')
+  const form = lobby.get('table-chat-form')
+  input.value = 'Gracias'
+  form.dispatchEvent(new window.Event('submit', { cancelable: true }))
+  await settle()
+  await lobby.tick(1800)
+  assert.match(lobby.get('table-chat-status').textContent, /No pudimos confirmar/)
+  assert.equal(input.value, 'Gracias')
+  form.dispatchEvent(new window.Event('submit', { cancelable: true }))
+  await settle()
+  assert.equal(sent.length, 2)
+  assert.equal(sent[0].messageId, sent[1].messageId)
+  assert.equal(input.value, '')
+  assert.match(lobby.get('table-chat-status').textContent, /Mensaje enviado/)
+})
+
+test('opening another waiting table clears the old chat draft before the new game starts', async t => {
+  const first = { ...waitingRoom, status: 'playing', count: 2, revision: 3, chat: [] }
+  const second = { ...waitingRoom, id: rematchRoomId }
+  let latest = second
+  const lobby = await openLobby(t, ({ path, method }) => {
+    if (path === '/rooms' && method === 'GET') return { rooms: [second] }
+    if (path === '/rooms/' + first.id) return { room: first }
+    if (path === '/rooms/' + second.id) return { room: latest }
+    if (path === '/friends') return { friends: [] }
+  }, { resumeId: first.id })
+  const input = lobby.get('table-message')
+  input.value = 'Borrador para otra persona'
+  lobby.get('table-chat').open = true
+  lobby.controller.lobby()
+  await settle()
+  lobby.get('rooms').querySelector('button').click()
+  await settle()
+  assert.equal(lobby.get('waiting').hidden, false)
+  latest = { ...second, status: 'playing', count: 2, revision: 2, chat: [] }
+  await lobby.tick(5000)
+  assert.equal(input.value, '')
+  assert.equal(lobby.get('table-chat').open, false)
+  assert.equal(lobby.get('table-chat-status').textContent, '')
+})
+
 test('an accepted doubles rematch lists the remaining players and an incoming seat can make it ready', async t => {
   const waiting = { ...finishedRoom, game: 'ludo', capacity: 4, count: 4, rematch: { seats: [0, 2], roomId: null } }
   let room = waiting

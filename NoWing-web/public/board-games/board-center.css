@@ -108,6 +108,8 @@ h1 { margin: .18rem 0 0; font-size: clamp(1.95rem, 7.4vw, 4.2rem); }
 #table-messages li { border-radius: .4rem; padding: .3rem .42rem; background: var(--raised); overflow-wrap: anywhere; white-space: pre-wrap; }
 #table-chat-form { display: flex; gap: .4rem; }
 #table-message { flex: 1; min-width: 0; }
+#table-chat-status { margin: 0; color: var(--aqua); font-size: .86rem; }
+#table-chat-status:not(:empty) { margin-block-start: .4rem; }
 .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 #abandon-dialog { max-width: min(23rem, calc(100% - 2rem)); }
 #abandon-dialog form { display: flex; flex-wrap: wrap; gap: .4rem; }

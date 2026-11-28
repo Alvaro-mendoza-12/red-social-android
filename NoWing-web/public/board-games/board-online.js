@@ -180,6 +180,10 @@ export function onlineBoard({ selection, onRoom, clearBoard, onRooms = () => {},
   const reactionStatus = element('reaction-status')
   const reactionSendStatus = element('reaction-send-status')
   const rematchControl = element('request-rematch')
+  const chatForm = element('table-chat-form')
+  const chatInput = element('table-message')
+  const chatSend = chatForm.querySelector('button')
+  const chatFeedback = element('table-chat-status')
   const movePending = () => moveStatus?.phase === 'sending' || moveStatus?.phase === 'verifying'
   const status = message => {
     const inTable = room != null && room.status !== 'waiting'
@@ -227,6 +231,7 @@ export function onlineBoard({ selection, onRoom, clearBoard, onRooms = () => {},
       rematchPhase = ''
       rematchNotice = ''
       loading = false
+      chatSend.disabled = false
       reconciling = false
       setRoomBusy(false)
       resetReactions()
@@ -336,18 +341,19 @@ export function onlineBoard({ selection, onRoom, clearBoard, onRooms = () => {},
     }
   }
 
-  function updateSocial(value, enteringRoom) {
+  function updateSocial(value) {
     const panel = element('table-chat')
-    if (enteringRoom) {
-      panel.open = false
-      chatStamp = undefined
-      chatDraft = undefined
-      element('table-message').value = ''
-      resetReactions()
-    }
     panel.hidden = !Array.isArray(value.chat)
-    element('table-chat-form').hidden = value.status !== 'playing'
+    chatForm.hidden = value.status !== 'playing'
     if (Array.isArray(value.chat)) {
+      if (chatDraft && value.chat.some(message => message.id === chatDraft.messageId && message.seat === value.seat)) {
+        if (chatInput.value.trim() === chatDraft.text) chatInput.value = ''
+        chatDraft = undefined
+        chatFeedback.textContent = 'Mensaje enviado.'
+      } else if (chatDraft && value.status === 'finished') {
+        chatDraft = undefined
+        chatFeedback.textContent = 'La partida terminó antes de que pudiéramos confirmar el mensaje.'
+      }
       const stamp = value.chat.map(message => message.id).join(',')
       if (stamp !== chatStamp) {
         const list = element('table-messages')
@@ -418,6 +424,12 @@ export function onlineBoard({ selection, onRoom, clearBoard, onRooms = () => {},
     if (enteringRoom) {
       rematchPhase = ''
       rematchNotice = ''
+      element('table-chat').open = false
+      chatStamp = undefined
+      chatDraft = undefined
+      chatInput.value = ''
+      chatFeedback.textContent = ''
+      resetReactions()
     }
     const changed = enteringRoom || room?.revision !== value.revision
     const clock = value.clock
@@ -435,7 +447,7 @@ export function onlineBoard({ selection, onRoom, clearBoard, onRooms = () => {},
       element('online-reactions').hidden = value.status !== 'playing'
       if (changed) onRoom(value)
       else if (newerClock) onClock(clock)
-      updateSocial(value, enteringRoom)
+      updateSocial(value)
       renderRematch()
       if (value.status === 'finished') resetReactions()
       else showRivalReaction(value, enteringRoom)
@@ -579,11 +591,17 @@ export function onlineBoard({ selection, onRoom, clearBoard, onRooms = () => {},
     const ticket = generation
     const isCurrent = () => ticket === generation
     loading = true
+    chatSend.disabled = true
     try { await task(isCurrent) }
     catch (error) {
       if (isCurrent()) status(messageFor(error))
     }
-    finally { if (isCurrent()) loading = false }
+    finally {
+      if (isCurrent()) {
+        loading = false
+        chatSend.disabled = false
+      }
+    }
   }
 
   async function move(event) {
@@ -618,6 +636,7 @@ export function onlineBoard({ selection, onRoom, clearBoard, onRooms = () => {},
       resetPlayerSearch()
       clearTimeout(timer)
       loading = false
+      chatSend.disabled = false
       reconciling = false
     }
     room = null
@@ -872,21 +891,26 @@ export function onlineBoard({ selection, onRoom, clearBoard, onRooms = () => {},
     control.setAttribute('aria-label', label)
     return control
   }))
-  element('table-chat-form').addEventListener('submit', event => {
+  async function submitChat(event) {
     event.preventDefault()
-    const input = element('table-message')
-    const text = input.value.trim()
+    const text = chatInput.value.trim()
     if (!room || room.status !== 'playing' || !Array.isArray(room.chat) || !text) return
-    void run(async current => {
+    let verify = false
+    await run(async current => {
       if (chatDraft?.text !== text) chatDraft = { text, messageId: crypto.randomUUID() }
-      const { room: updated } = await request(url('/chat'), chatDraft)
-      if (current()) {
-        chatDraft = undefined
-        if (input.value.trim() === text) input.value = ''
-        displayRoom(updated)
+      chatFeedback.textContent = 'Enviando mensaje…'
+      try {
+        const { room: updated } = await request(url('/chat'), chatDraft)
+        if (current()) displayRoom(updated)
+      } catch (error) {
+        if (!current()) return
+        verify = connectionLost(error)
+        chatFeedback.textContent = verify ? 'No pudimos confirmar el mensaje. Puedes volver a enviarlo.' : messageFor(error)
       }
     })
-  })
+    if (verify) refreshOnReturn()
+  }
+  chatForm.addEventListener('submit', event => void submitChat(event))
   async function requestRematch() {
     if (!room?.rematch || room.status !== 'finished' || rematchControl.disabled) return
     await run(async current => {
