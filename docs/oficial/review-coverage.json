@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-28T05:47:00.290314+00:00",
-  "baseCommit": "f1b0205d2e62b1b45b3f4930aa7f4a557c407cc3",
+  "generatedAtUtc": "2026-11-28T05:56:03.649062+00:00",
+  "baseCommit": "105a96cb1fce1c5763dcdd64aab55e0af72b8aa3",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Candidate Git index; unrelated working-tree edits and ignored files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -10,7 +10,7 @@
     "code-read": "Full source read at this hash; follow-ups, integration and runtime validation may still be open."
   },
   "counts": {
-    "pending": 3419,
+    "pending": 3420,
     "code-read": 1132,
     "partial": 324
   },
@@ -21,7 +21,7 @@
       "code-read": 658
     },
     "documentation": {
-      "pending": 747,
+      "pending": 748,
       "code-read": 73,
       "partial": 22
     },
@@ -357,9 +357,9 @@
     {
       "file": "NoWing-web/public/board-games/board-online.js",
       "phase": "web",
-      "gitBlobId": "b1ccb24366daaa5dfe88a34d924b11d6558b0ec8",
+      "gitBlobId": "a08bf73e08c79c9c36e254657ebe450e98a2ea81",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/278-juegos-reacciones-y-busqueda.md",
+      "evidence": "docs/oficial/279-juegos-recuperacion-de-invitaciones.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -4681,9 +4681,9 @@
     {
       "file": "NoWing-web/tests/board-online.test.mjs",
       "phase": "web",
-      "gitBlobId": "1ffd7ddd2850453950d348eafba65e52ff33f654",
+      "gitBlobId": "e2b34d8c00a9c14956c05d2acdacab61de71af2b",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/278-juegos-reacciones-y-busqueda.md",
+      "evidence": "docs/oficial/279-juegos-recuperacion-de-invitaciones.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -23072,6 +23072,12 @@
       "file": "docs/oficial/278-juegos-reacciones-y-busqueda.md",
       "phase": "documentation",
       "gitBlobId": "f00e564873f94add315c44cb23f6114c8186aa8c",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/oficial/279-juegos-recuperacion-de-invitaciones.md",
+      "phase": "documentation",
+      "gitBlobId": "305fb64ef0086e27d5d1c3af057f4a6b01d2b8fb",
       "reviewStatus": "pending"
     },
     {

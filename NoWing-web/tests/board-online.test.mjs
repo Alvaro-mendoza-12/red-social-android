@@ -201,6 +201,74 @@ test('opening the same board notice after accepting reads the match without anot
   assert.deepEqual(requests, [['GET', '/rooms'], ['GET', `/rooms/${accepted.id}`]])
 })
 
+test('Android recovers an accepted invitation after the join reply is lost without asking to join again', async t => {
+  const invited = { ...waitingRoom, invited: true, seat: -1, host: false }
+  const accepted = { ...invited, invited: false, seat: 1, count: 2, status: 'playing', revision: 2 }
+  const opened = []
+  let joins = 0, reads = 0
+  const lobby = await openLobby(t, ({ path }) => {
+    if (path === '/rooms') return { rooms: [invited] }
+    if (path.endsWith('/join')) { joins++; return undefined }
+    if (path === `/rooms/${invited.id}`) return ++reads === 1 ? new Error('BOARD_UNAVAILABLE') : { room: accepted }
+  }, { inviteId: invited.id, onRoom: room => opened.push(room.id) })
+  const button = lobby.get('rooms').querySelector('button')
+  button.click()
+  assert.equal(button.disabled, true)
+  assert.match(lobby.get('online-status').textContent, /Aceptando invitación/)
+  await lobby.tick(12000)
+  assert.equal(reads, 1)
+  assert.match(lobby.get('online-status').textContent, /Verificando tu entrada/)
+  await lobby.tick(5000)
+  assert.equal(joins, 1)
+  assert.deepEqual(opened, [accepted.id])
+})
+
+test('an unconfirmed invitation stays available for explicit retry and the lobby restores its focus', async t => {
+  const invited = { ...waitingRoom, invited: true, seat: -1, host: false }
+  const accepted = { ...invited, invited: false, seat: 1, count: 2, status: 'playing', revision: 2 }
+  const opened = []
+  let joins = 0
+  const lobby = await openLobby(t, ({ path }) => {
+    if (path === '/rooms') return { rooms: [invited] }
+    if (path.endsWith('/join')) return ++joins === 1 ? new Error('BOARD_UNAVAILABLE') : { room: accepted }
+    if (path === `/rooms/${invited.id}`) return new Error('BOARD_ROOM_NOT_FOUND')
+  }, { inviteId: invited.id, onRoom: room => opened.push(room.id) })
+  lobby.get('rooms').querySelector('button').click()
+  await settle()
+  const retry = lobby.get('rooms').querySelector('button')
+  assert.match(lobby.get('online-status').textContent, /No pudimos confirmar tu entrada/)
+  assert.equal(document.activeElement, retry)
+  assert.equal(joins, 1)
+  assert.deepEqual(opened, [])
+  retry.click()
+  await settle()
+  assert.deepEqual(opened, [accepted.id])
+  assert.equal(joins, 2)
+})
+
+test('switching to the bot discards a late confirmation of a joined table', async t => {
+  const invited = { ...waitingRoom, invited: true, seat: -1, host: false }
+  const accepted = { ...invited, invited: false, seat: 1, count: 2, status: 'playing', revision: 2 }
+  const opened = []
+  let finishRead
+  const lobby = await openLobby(t, ({ path }) => {
+    if (path === '/rooms') return { rooms: [invited] }
+    if (path.endsWith('/join')) return new Error('BOARD_UNAVAILABLE')
+    if (path === `/rooms/${invited.id}`) return new Promise(resolve => { finishRead = resolve })
+  }, { inviteId: invited.id, onRoom: room => opened.push(room.id) })
+  lobby.get('rooms').querySelector('button').click()
+  await settle()
+  assert.equal(lobby.get('find-room').disabled, true)
+  await lobby.click('open-bot')
+  finishRead({ room: accepted })
+  await settle()
+  assert.equal(lobby.controller.mode(), 'offline')
+  assert.equal(lobby.get('mode').value, 'bot')
+  assert.deepEqual(opened, [])
+  await lobby.click('open-online')
+  assert.equal(lobby.get('find-room').disabled, false)
+})
+
 test('a waiting host can invite friends after a transient lookup failure at the same room revision', async t => {
   let reads = 0
   const lobby = await openLobby(t, ({ path, method }) => {
@@ -628,6 +696,26 @@ test('retrying after a lost native reply reuses the room creation request ID', a
   await lobby.click('create-private')
   assert.equal(requestIds.length, 2)
   assert.equal(requestIds[0], requestIds[1])
+  assert.equal(lobby.get('waiting').hidden, false)
+})
+
+test('a public retry keeps the original request ID separate from a private room', async t => {
+  const publicIds = [], privateIds = []
+  const lobby = await openLobby(t, ({ path, method, body }) => {
+    if (path === '/rooms' && method === 'GET') return { rooms: [] }
+    if (path === '/rooms') { privateIds.push(body.requestId); return new Error('BOARD_UNAVAILABLE') }
+    if (path === '/match') {
+      publicIds.push(body.requestId)
+      if (publicIds.length > 1) return { room: { ...waitingRoom, id: publicIds[0], visibility: 'public' } }
+    }
+  })
+  await lobby.click('find-room')
+  await lobby.tick(12000)
+  await lobby.click('create-private')
+  await lobby.click('find-room')
+  assert.equal(publicIds.length, 2)
+  assert.equal(publicIds[0], publicIds[1])
+  assert.notEqual(publicIds[0], privateIds[0])
   assert.equal(lobby.get('waiting').hidden, false)
 })
 
