@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-28T08:29:47.772493+00:00",
-  "baseCommit": "3d50599fe104db295ae759bd79a2314696fc16f3",
+  "generatedAtUtc": "2026-11-28T08:30:12.581236+00:00",
+  "baseCommit": "0bf67cc1e3c5abf82d77450b4a719c4838edfc9f",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Candidate Git index; unrelated working-tree edits and ignored files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -10,7 +10,7 @@
     "code-read": "Full source read at this hash; follow-ups, integration and runtime validation may still be open."
   },
   "counts": {
-    "pending": 3423,
+    "pending": 3424,
     "code-read": 1132,
     "partial": 324
   },
@@ -21,7 +21,7 @@
       "code-read": 658
     },
     "documentation": {
-      "pending": 751,
+      "pending": 752,
       "code-read": 73,
       "partial": 22
     },
@@ -4417,9 +4417,9 @@
     {
       "file": "NoWing-web/src/pages/auth/LoginPage.tsx",
       "phase": "web",
-      "gitBlobId": "f2ad7ccf1f332dca03f8185a2499b1a52a6fa4c0",
+      "gitBlobId": "f6d6fcea351487ffbf27d1e896768613c123df43",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/114-comparacion-correcciones-dot-2026-11-12.md",
+      "evidence": "docs/oficial/283-acceso-web-pantallas-cortas.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -4569,9 +4569,9 @@
     {
       "file": "NoWing-web/src/ui/novvin/auth.css",
       "phase": "web",
-      "gitBlobId": "9efc4936d545ee7dbe0f408b29c91ad0445079c0",
+      "gitBlobId": "826f265fccc9c30dcf4fa399604f76159dd22116",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/114-comparacion-correcciones-dot-2026-11-12.md",
+      "evidence": "docs/oficial/283-acceso-web-pantallas-cortas.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -23102,6 +23102,12 @@
       "file": "docs/oficial/282-android-196-validacion-de-produccion.md",
       "phase": "documentation",
       "gitBlobId": "6cc3a59f2ad1d6604b8f8e895f228c2bdfbbc9bd",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/oficial/283-acceso-web-pantallas-cortas.md",
+      "phase": "documentation",
+      "gitBlobId": "886daf7cd628e1aee9d06b0937b5a1c59d833cac",
       "reviewStatus": "pending"
     },
     {

@@ -446,7 +446,7 @@ export function LoginPage() {
   return (
     <section
       className={[
-        'auth-shell auth-shell-rich auth-shell-centered',
+        'auth-shell auth-shell-rich auth-shell-centered auth-shell-login',
         `accent-${webPreferences.accentTheme}`,
       ].join(' ')}
     >

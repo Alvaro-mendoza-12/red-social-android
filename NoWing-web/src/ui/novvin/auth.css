@@ -270,3 +270,29 @@
     align-items: center;
   }
 }
+
+@media (max-width: 480px) and (max-height: 660px) {
+  .auth-shell-login {
+    padding-block: 20px;
+  }
+  .auth-shell-login .auth-login-card {
+    padding-block: 12px;
+    gap: 16px;
+  }
+  .auth-shell-login .auth-head-copy {
+    gap: 16px;
+  }
+  .auth-shell-login .auth-brand-lockup {
+    margin-bottom: 16px;
+  }
+  .auth-shell-login .auth-logo-img {
+    width: 48px;
+    height: 48px;
+  }
+  .auth-shell-login .auth-head-copy h1 {
+    margin-bottom: 8px;
+  }
+  .auth-shell-login form {
+    gap: 12px;
+  }
+}
